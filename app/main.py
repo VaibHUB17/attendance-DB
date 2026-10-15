@@ -1022,8 +1022,137 @@ def department_trend(
 # --------------------------------------------------------------------------- #
 # Admin Explain Endpoint
 # --------------------------------------------------------------------------- #
+@app.get("/admin/explain/{endpoint}", tags=["admin"])
+def explain_endpoint(
+    endpoint: str = Path(..., pattern=r"^(attendance_list|employee_monthly|department_summary|late_leaderboard|department_trend)$"),
+    emp_code: Optional[str] = None,
+    month: Optional[str] = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    department: Optional[str] = None,
+    limit: int = Query(10, ge=1, le=50),
+    date_from: Optional[dt_date] = None,
+    date_to: Optional[dt_date] = None,
+    status: Optional[str] = Query(None, pattern=r"^(PRESENT|ABSENT|LEAVE|WFH|ON_DUTY)$"),
+    from_date: Optional[dt_date] = Query(None, alias="from"),
+    to_date: Optional[dt_date] = Query(None, alias="to"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
+    if endpoint == "attendance_list":
+        if date_from and date_to and date_from > date_to:
+            raise HTTPException(status_code=422, detail="date_from must be <= date_to")
 
-# --------------------------------------------------------------------------- #
-# TODO - admin explain profiler:
-#   GET /admin/explain/{endpoint}
-# --------------------------------------------------------------------------- #
+        q = {}
+        if emp_code:
+            q["emp_code"] = emp_code
+        if date_from or date_to:
+            q["date"] = {}
+            if date_from:
+                q["date"]["$gte"] = date_from.isoformat()
+            if date_to:
+                q["date"]["$lte"] = date_to.isoformat()
+        if status:
+            q["status"] = status
+
+        skip = (page - 1) * page_size
+        explain_doc = db.command(
+            "explain",
+            {
+                "find": "attendance_logs",
+                "filter": q,
+                "sort": {"date": -1, "emp_code": 1},
+                "skip": skip,
+                "limit": page_size,
+            },
+            verbosity="executionStats",
+        )
+        return {
+            "endpoint": endpoint,
+            "collection": "attendance_logs",
+            "explain": json.loads(json_util.dumps(explain_doc)),
+        }
+
+    elif endpoint == "employee_monthly":
+        if not emp_code or not month:
+            raise HTTPException(status_code=422, detail="emp_code and month are required")
+        pipeline = build_employee_monthly_pipeline(emp_code, month)
+        explain_doc = db.command(
+            "explain",
+            {
+                "aggregate": "attendance_logs",
+                "pipeline": pipeline,
+                "cursor": {},
+            },
+            verbosity="executionStats",
+        )
+        return {
+            "endpoint": endpoint,
+            "collection": "attendance_logs",
+            "explain": json.loads(json_util.dumps(explain_doc)),
+        }
+
+    elif endpoint == "department_summary":
+        if not month:
+            raise HTTPException(status_code=422, detail="month is required")
+        pipeline = build_department_summary_pipeline(month, department)
+        explain_doc = db.command(
+            "explain",
+            {
+                "aggregate": "employees",
+                "pipeline": pipeline,
+                "cursor": {},
+            },
+            verbosity="executionStats",
+        )
+        return {
+            "endpoint": endpoint,
+            "collection": "employees",
+            "explain": json.loads(json_util.dumps(explain_doc)),
+        }
+
+    elif endpoint == "late_leaderboard":
+        if not month:
+            raise HTTPException(status_code=422, detail="month is required")
+        pipeline = build_late_leaderboard_pipeline(month, limit, department)
+        explain_doc = db.command(
+            "explain",
+            {
+                "aggregate": "attendance_logs",
+                "pipeline": pipeline,
+                "cursor": {},
+            },
+            verbosity="executionStats",
+        )
+        return {
+            "endpoint": endpoint,
+            "collection": "attendance_logs",
+            "explain": json.loads(json_util.dumps(explain_doc)),
+        }
+
+    elif endpoint == "department_trend":
+        if not department or not from_date or not to_date:
+            raise HTTPException(status_code=422, detail="department, from, and to are required")
+        if to_date < from_date:
+            raise HTTPException(status_code=422, detail="to must be >= from")
+        if (to_date - from_date).days + 1 > 92:
+            raise HTTPException(status_code=422, detail="Date range cannot exceed 92 days")
+
+        dept_emps = list(db.employees.find({"department": department}, {"emp_code": 1}))
+        emp_codes = [e["emp_code"] for e in dept_emps]
+
+        pipeline = build_department_trend_pipeline(department, from_date.isoformat(), to_date.isoformat(), emp_codes)
+        explain_doc = db.command(
+            "explain",
+            {
+                "aggregate": "attendance_logs",
+                "pipeline": pipeline,
+                "cursor": {},
+            },
+            verbosity="executionStats",
+        )
+        return {
+            "endpoint": endpoint,
+            "collection": "attendance_logs",
+            "explain": json.loads(json_util.dumps(explain_doc)),
+        }
+
+    raise HTTPException(status_code=422, detail=f"Unknown endpoint: {endpoint}")
