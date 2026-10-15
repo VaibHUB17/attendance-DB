@@ -1,0 +1,28 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python virtual environment & cache
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.pytest_cache/
+
+# Private internal developer log & test scripts
+DEV_INTERNAL_LOG.md
+test_suite.py
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Confidential problem statement
+PROBLEM_STATEMENT.docx
+PROBLEM_STATEMENT.pdf

@@ -1,0 +1,282 @@
+{
+  "info": {
+    "name": "HROne Employee Attendance & Analytics API",
+    "description": "Complete Postman collection to test all endpoints and business rules (R1-R10) of the HROne Candidate Kit.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. System",
+      "item": [
+        {
+          "name": "GET /health - System Readiness Probe",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Checks database connectivity. Returns 200 OK when MongoDB ping succeeds."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Employees",
+      "item": [
+        {
+          "name": "POST /employees - Create Employee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emp_code\": \"EMP9999\",\n  \"name\": \"Test Engineer\",\n  \"email\": \"test9999@example.com\",\n  \"department\": \"QA\",\n  \"shift_start\": \"09:30\",\n  \"shift_end\": \"18:30\",\n  \"joined_on\": \"2026-06-01\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/employees",
+              "host": ["{{base_url}}"],
+              "path": ["employees"]
+            },
+            "description": "Creates a new employee record. Returns 201 Created."
+          }
+        },
+        {
+          "name": "POST /employees - Duplicate Emp Code (Expect 409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emp_code\": \"EMP9999\",\n  \"name\": \"Duplicate Test\",\n  \"email\": \"duplicate@example.com\",\n  \"department\": \"QA\",\n  \"shift_start\": \"09:30\",\n  \"shift_end\": \"18:30\",\n  \"joined_on\": \"2026-06-01\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/employees",
+              "host": ["{{base_url}}"],
+              "path": ["employees"]
+            },
+            "description": "Tests uniqueness constraint on emp_code. Returns 409 Conflict."
+          }
+        },
+        {
+          "name": "GET /employees - List Filtered by Department",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/employees?department=QA&page=1&page_size=10",
+              "host": ["{{base_url}}"],
+              "path": ["employees"],
+              "query": [
+                { "key": "department", "value": "QA" },
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "10" }
+              ]
+            },
+            "description": "Paginated list of employees sorted by emp_code."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Attendance",
+      "item": [
+        {
+          "name": "POST /attendance/punch-in - Late Arrival (R2)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emp_code\": \"EMP9999\",\n  \"punched_at\": 1783483801000,\n  \"status\": \"PRESENT\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/attendance/punch-in",
+              "host": ["{{base_url}}"],
+              "path": ["attendance", "punch-in"]
+            },
+            "description": "Punches in at 09:40:01 IST (1783483801000). Exceeds 10m grace period -> late_minutes=10."
+          }
+        },
+        {
+          "name": "POST /attendance/punch-out - Overtime Calculation (R3, R4, R5)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emp_code\": \"EMP9999\",\n  \"punched_at\": 1783518300000\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/attendance/punch-out",
+              "host": ["{{base_url}}"],
+              "path": ["attendance", "punch-out"]
+            },
+            "description": "Punches out at 19:15:00 IST (1783518300000). Closes open record, calculates work_hours=9.58, overtime_minutes=45."
+          }
+        },
+        {
+          "name": "GET /attendance - List Attendance with Filters",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/attendance?emp_code=EMP9999&date_from=2026-07-01&date_to=2026-07-31",
+              "host": ["{{base_url}}"],
+              "path": ["attendance"],
+              "query": [
+                { "key": "emp_code", "value": "EMP9999" },
+                { "key": "date_from", "value": "2026-07-01" },
+                { "key": "date_to", "value": "2026-07-31" }
+              ]
+            },
+            "description": "Lists attendance logs ordered by date descending, emp_code ascending."
+          }
+        },
+        {
+          "name": "PATCH /attendance/{emp_code}/{date} - Regularization & Audit Trail",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"WFH\",\n  \"reason\": \"Retroactive manager approval for WFH\",\n  \"regularized_by\": \"lead.qa\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/attendance/EMP9999/2026-07-08",
+              "host": ["{{base_url}}"],
+              "path": ["attendance", "EMP9999", "2026-07-08"]
+            },
+            "description": "Manual regularization appending an immutable entry to history with audit diff."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Analytics",
+      "item": [
+        {
+          "name": "GET /analytics/employees/{emp_code}/monthly - Monthly Attendance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/analytics/employees/EMP0001/monthly?month=2026-07",
+              "host": ["{{base_url}}"],
+              "path": ["analytics", "employees", "EMP0001", "monthly"],
+              "query": [
+                { "key": "month", "value": "2026-07" }
+              ]
+            },
+            "description": "Computes working days, present days, leave count, late minutes, overtime and attendance percentage."
+          }
+        },
+        {
+          "name": "GET /analytics/departments/summary - Department Aggregation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/analytics/departments/summary?month=2026-07",
+              "host": ["{{base_url}}"],
+              "path": ["analytics", "departments", "summary"],
+              "query": [
+                { "key": "month", "value": "2026-07" }
+              ]
+            },
+            "description": "Aggregates headcount, present days, late count, and average work hours per department."
+          }
+        },
+        {
+          "name": "GET /analytics/leaderboard/late - Top Latecomers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/analytics/leaderboard/late?month=2026-07&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["analytics", "leaderboard", "late"],
+              "query": [
+                { "key": "month", "value": "2026-07" },
+                { "key": "limit", "value": "5" }
+              ]
+            },
+            "description": "Ranks employees by total late minutes using MongoDB $setWindowFields and $rank."
+          }
+        },
+        {
+          "name": "GET /analytics/departments/{department}/trend - Daily Trend & 7d Moving Avg",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/analytics/departments/Engineering/trend?from=2026-07-01&to=2026-07-07",
+              "host": ["{{base_url}}"],
+              "path": ["analytics", "departments", "Engineering", "trend"],
+              "query": [
+                { "key": "from", "value": "2026-07-01" },
+                { "key": "to", "value": "2026-07-07" }
+              ]
+            },
+            "description": "Densified daily calendar with working day flag, active headcount, attendance rate, and 7-day moving average."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Admin",
+      "item": [
+        {
+          "name": "GET /admin/explain/attendance_list - MongoDB Query Plan",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/explain/attendance_list?emp_code=EMP0001",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "explain", "attendance_list"],
+              "query": [
+                { "key": "emp_code", "value": "EMP0001" }
+              ]
+            },
+            "description": "Returns MongoDB executionStats proving IXSCAN index utilization."
+          }
+        }
+      ]
+    }
+  ]
+}
